@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TelegramITRBot", "TelegramITRBot\TelegramITRBot.csproj", "{B20DB571-4810-420D-B7C8-0CD72DD4607B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B20DB571-4810-420D-B7C8-0CD72DD4607B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B20DB571-4810-420D-B7C8-0CD72DD4607B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B20DB571-4810-420D-B7C8-0CD72DD4607B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B20DB571-4810-420D-B7C8-0CD72DD4607B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
