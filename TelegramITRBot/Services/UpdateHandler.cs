@@ -2,11 +2,11 @@ using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramITRBot.Configs;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using TelegramITRBot.Models;
 
 namespace TelegramITRBot.Services;
 
@@ -27,14 +27,7 @@ public class UpdateHandler : IUpdateHandler
         "В який час Вам буде зручно щоб ми забрали сміття?", // [2]
         "підтвердіть номер телефону", // [3
     };
-
-    class QuestionModel
-    {
-        public string OnSubscribe { get; set; }
-        public string Address { get; set; }
-        public string TimeToPickup { get; set; }
-        public string PhoneNumber { get; set; }
-    }
+    
 
     public UpdateHandler(
         ILogger<UpdateHandler> logger,
