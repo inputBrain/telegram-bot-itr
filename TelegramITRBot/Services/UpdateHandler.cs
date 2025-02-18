@@ -6,6 +6,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramITRBot.Configs;
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 
 namespace TelegramITRBot.Services;
 
@@ -24,8 +25,7 @@ public class UpdateHandler : IUpdateHandler
         "Оберіть разовий вивіз сміття чи підписку", // [0]
         "Залиште Вашу адресу, підʼїзд, поверх, квартиру", // [1]
         "В який час Вам буде зручно щоб ми забрали сміття?", // [2]
-        "підтвердіть номер телефону", // [3]
-        "додаткова інформація на гарячій лінії ...", // [4]
+        "підтвердіть номер телефону", // [3
     };
 
     class QuestionModel
@@ -73,7 +73,9 @@ public class UpdateHandler : IUpdateHandler
 
             var keyboard = new ReplyKeyboardMarkup(new[]
             {
-                new KeyboardButton[] { "Разовий вивіз" }, ["Підписка"]
+                new KeyboardButton[] { "Разовий вивіз" },
+                new KeyboardButton[] { "Підписка" },
+                // new KeyboardButton[] { "Разовий вивіз" }, ["Підписка"]
             })
             {
                 ResizeKeyboard = true,
@@ -90,56 +92,53 @@ public class UpdateHandler : IUpdateHandler
         
         if (_userSteps.ContainsKey(userId))
         {
-            if (_userSteps[userId] == 3 && message.Contact != null)
+            if (_userSteps[userId] == 3)
             {
-                _userAnswers[userId].PhoneNumber = message.Contact.PhoneNumber;
-            }
-            else
-            {
-                switch (_userSteps[userId])
+                var phonePattern = @"^(?:\+?380\d{9}|0\d{9})$"; // 380930000000, 0930000000, +380930000000
+
+                if (message.Text != null && Regex.IsMatch(message.Text.Replace(" ", ""), phonePattern))
                 {
-                    case 0:
-                        _userAnswers[userId].OnSubscribe = message.Text;
-                        break;
-                    case 1:
-                        _userAnswers[userId].Address = message.Text;
-                        break;
-                    case 2:
-                        _userAnswers[userId].TimeToPickup = message.Text;
-                        break;
+                    _userAnswers[userId].PhoneNumber = message.Text.Replace(" ", "");
+                    _userSteps[userId]++;
+                }
+                else
+                {
+                    await _botClient.SendTextMessageAsync(
+                        chatId: message.Chat.Id,
+                        text: "❌ Номер телефону некоректний. Введіть номер в одному з форматів:\n\n✅ 093 000 00 00\n✅ 38 093 000 00 00\n✅ +38 093 000 00 00",
+                        cancellationToken: cancellationToken);
+                    return;
                 }
             }
+            switch (_userSteps[userId])
+            {
+                case 0:
+                    _userAnswers[userId].OnSubscribe = message.Text;
+                    break;
+                case 1:
+                    _userAnswers[userId].Address = message.Text;
+                    break;
+                case 2:
+                    _userAnswers[userId].TimeToPickup = message.Text;
+                    break;
+                case 3:
+                    _userAnswers[userId].PhoneNumber = message.Text;
+                    break;
+            }
+            
 
             var nextStep = _userSteps[userId] + 1;
             if (nextStep < _questions.Count)
             {
                 _userSteps[userId] = nextStep;
-
-                if (_userSteps[userId] == 3)
-                {
-                    var requestPhoneKeyboard = new ReplyKeyboardMarkup(new[]
-                    {
-                        new KeyboardButton("📱 Підтвердити номер телефону") { RequestContact = true }
-                    })
-                    {
-                        ResizeKeyboard = true,
-                        OneTimeKeyboard = true
-                    };
-
-                    await _botClient.SendTextMessageAsync(
-                        chatId: message.Chat.Id,
-                        text: _questions[3],
-                        replyMarkup: requestPhoneKeyboard,
-                        cancellationToken: cancellationToken);
-                }
-                else
-                {
+                
                     await _botClient.SendTextMessageAsync(message.Chat.Id, _questions[nextStep], cancellationToken: cancellationToken);
-                }
+                
             }
             else
             {
-                await _botClient.SendTextMessageAsync(message.Chat.Id, "Survey completed!", cancellationToken: cancellationToken);
+                await _botClient.SendTextMessageAsync(message.Chat.Id, "Додаткова інформація на гарячій лінії ...", cancellationToken: cancellationToken);
+                // await _botClient.SendTextMessageAsync(message.Chat.Id, "\nTODO: Checkout", cancellationToken: cancellationToken);
                 await SendSurveyResults(userId, message.From!, cancellationToken);
                 _userAnswers.TryRemove(userId, out _);
                 _userSteps.TryRemove(userId, out _);
