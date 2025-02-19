@@ -54,7 +54,7 @@ public class UpdateHandler : IUpdateHandler
     {
         var userId = message.From!.Id;
 
-        if (message.Text != null && (message.Text.StartsWith("/start") || message.Text.StartsWith("/start_survey")))
+        if (message.Text != null && (message.Text.StartsWith("/start") || message.Text.StartsWith("/request_services")))
         {
             _userAnswers[userId] = new QuestionModel();
             _userSteps[userId] = 0;
