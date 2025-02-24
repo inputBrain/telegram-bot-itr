@@ -25,7 +25,8 @@ public class UpdateHandler : IUpdateHandler
         "Оберіть разовий вивіз сміття чи підписку", // [0]
         "Залиште Вашу адресу, підʼїзд, поверх, квартиру", // [1]
         "В який час Вам буде зручно щоб ми забрали сміття?", // [2]
-        "підтвердіть номер телефону", // [3
+        "Підтвердіть номер телефону", // [3]
+        "Виберіть спосіб оплати", // [4]
     };
     
 
@@ -66,8 +67,8 @@ public class UpdateHandler : IUpdateHandler
 
             var keyboard = new ReplyKeyboardMarkup(new[]
             {
-                new KeyboardButton[] { "Разовий вивіз" },
-                new KeyboardButton[] { "Підписка" },
+                new KeyboardButton[] { "Разовий вивіз (40 грн)" },
+                new KeyboardButton[] { "Підписка (1000 грн / 1 місяць)" },
                 // new KeyboardButton[] { "Разовий вивіз" }, ["Підписка"]
             })
             {
@@ -103,6 +104,35 @@ public class UpdateHandler : IUpdateHandler
                     return;
                 }
             }
+            if (_userSteps[userId] == 4)
+            {
+                if (message.Text != null && message.Text == "Готівкою на місці" || message.Text == "Картою на місці" || message.Text == "По предоплаті на карту")
+                {
+                    _userAnswers[userId].TypeToPay = message.Text;
+                    _userSteps[userId]++;
+                }
+                else
+                {
+                    var keyboard = new ReplyKeyboardMarkup(new[]
+                    {
+                        new KeyboardButton[] { "Готівкою на місці" },
+                        new KeyboardButton[] { "Картою на місці"},
+                        new KeyboardButton[] { "По предоплаті на карту" }
+                    })
+                    {
+                        ResizeKeyboard = true,
+                        OneTimeKeyboard = true
+                    };
+
+                    await _botClient.SendTextMessageAsync(
+                        chatId: message.Chat.Id,
+                        text: _questions[4],
+                        replyMarkup: keyboard,
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+            }
+            
             switch (_userSteps[userId])
             {
                 case 0:
@@ -116,6 +146,9 @@ public class UpdateHandler : IUpdateHandler
                     break;
                 case 3:
                     _userAnswers[userId].PhoneNumber = message.Text;
+                    break;
+                case 4:
+                    _userAnswers[userId].TypeToPay = message.Text;
                     break;
             }
             
@@ -131,6 +164,7 @@ public class UpdateHandler : IUpdateHandler
             else
             {
                 await _botClient.SendTextMessageAsync(message.Chat.Id, "Додаткова інформація на гарячій лінії ...", cancellationToken: cancellationToken);
+                await _botClient.SendTextMessageAsync(message.Chat.Id, "Якщо у вас виникли питання, чи потрібна додаткова інформація напишіть нашому менеджеру:", cancellationToken: cancellationToken);
                 // await _botClient.SendTextMessageAsync(message.Chat.Id, "\nTODO: Checkout", cancellationToken: cancellationToken);
                 await SendSurveyResults(userId, message.From!, cancellationToken);
                 _userAnswers.TryRemove(userId, out _);
@@ -152,7 +186,8 @@ public class UpdateHandler : IUpdateHandler
                      $"{answers.OnSubscribe}\n" +
                      $"Адреса: {answers.Address}\n" +
                      $"Час вивозу: {answers.TimeToPickup}\n" +
-                     $"Номер телефону: {answers.PhoneNumber}";
+                     $"Номер телефону: {answers.PhoneNumber}\n" +
+                     $"Спосіб оплати: {answers.TypeToPay}";
 
         await _botClient.SendTextMessageAsync(
             chatId: _telegramBotConfig.PrivateChatId,
