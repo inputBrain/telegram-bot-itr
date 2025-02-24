@@ -28,7 +28,8 @@ public class UpdateHandler : IUpdateHandler
         "Підтвердіть номер телефону", // [3]
         "Виберіть спосіб оплати", // [4]
     };
-    
+
+    private readonly List<Func<Message, CancellationToken, Task<bool>>> _stepHandlers;
 
     public UpdateHandler(
         ILogger<UpdateHandler> logger,
@@ -41,6 +42,15 @@ public class UpdateHandler : IUpdateHandler
         _telegramBotConfig = telegramBotConfig.Value;
         _botClient = botClient;
         _messageService = messageService;
+
+        _stepHandlers = new List<Func<Message, CancellationToken, Task<bool>>>
+        {
+            HandleSubscriptionStep,
+            HandleAddressStep,
+            HandleTimeStep,
+            HandlePhoneStep,
+            HandlePaymentStep
+        };
     }
 
     public async Task HandleUpdateAsync(ITelegramBotClient _, Update update, CancellationToken cancellationToken)
@@ -60,16 +70,13 @@ public class UpdateHandler : IUpdateHandler
             _userAnswers[userId] = new QuestionModel();
             _userSteps[userId] = 0;
 
-            // 1
-            await _botClient.SendTextMessageAsync(message.Chat.Id, "Вітаємо!", cancellationToken: cancellationToken); 
-            // 2
+            await _botClient.SendTextMessageAsync(message.Chat.Id, "Вітаємо!", cancellationToken: cancellationToken);
             await _botClient.SendTextMessageAsync(message.Chat.Id, "Набридло виносити щодня сміття? Ми за Вас це зробимо!\n\nМи — компанія <company>, зробимо Ваш день приємніше і зручніше!\n\nОформлюйте разове замовлення або підписку, і наш курʼєр забере Ваше сміття.", cancellationToken: cancellationToken);
 
             var keyboard = new ReplyKeyboardMarkup(new[]
             {
                 new KeyboardButton[] { "Разовий вивіз (40 грн)" },
                 new KeyboardButton[] { "Підписка (1000 грн / 1 місяць)" },
-                // new KeyboardButton[] { "Разовий вивіз" }, ["Підписка"]
             })
             {
                 ResizeKeyboard = true,
@@ -83,94 +90,105 @@ public class UpdateHandler : IUpdateHandler
                 cancellationToken: cancellationToken);
             return;
         }
-        
+
         if (_userSteps.ContainsKey(userId))
         {
-            if (_userSteps[userId] == 3)
+            var currentStep = _userSteps[userId];
+            if (currentStep < _stepHandlers.Count)
             {
-                var phonePattern = @"^(?:\+?380\d{9}|0\d{9})$"; // 380930000000, 0930000000, +380930000000
-
-                if (message.Text != null && Regex.IsMatch(message.Text.Replace(" ", ""), phonePattern))
+                var success = await _stepHandlers[currentStep](message, cancellationToken);
+                if (success)
                 {
-                    _userAnswers[userId].PhoneNumber = message.Text.Replace(" ", "");
                     _userSteps[userId]++;
-                }
-                else
-                {
-                    await _botClient.SendTextMessageAsync(
-                        chatId: message.Chat.Id,
-                        text: "❌ Номер телефону некоректний. Введіть номер в одному з форматів:\n\n✅ 093 000 00 00\n✅ 38 093 000 00 00\n✅ +38 093 000 00 00",
-                        cancellationToken: cancellationToken);
-                    return;
-                }
-            }
-            if (_userSteps[userId] == 4)
-            {
-                if (message.Text != null && message.Text == "Готівкою на місці" || message.Text == "Картою на місці" || message.Text == "По предоплаті на карту")
-                {
-                    _userAnswers[userId].TypeToPay = message.Text;
-                    _userSteps[userId]++;
-                }
-                else
-                {
-                    var keyboard = new ReplyKeyboardMarkup(new[]
+                    if (_userSteps[userId] < _questions.Count)
                     {
-                        new KeyboardButton[] { "Готівкою на місці" },
-                        new KeyboardButton[] { "Картою на місці"},
-                        new KeyboardButton[] { "По предоплаті на карту" }
-                    })
+                        await _botClient.SendTextMessageAsync(message.Chat.Id, _questions[_userSteps[userId]], cancellationToken: cancellationToken);
+                    }
+                    else
                     {
-                        ResizeKeyboard = true,
-                        OneTimeKeyboard = true
-                    };
-
-                    await _botClient.SendTextMessageAsync(
-                        chatId: message.Chat.Id,
-                        text: _questions[4],
-                        replyMarkup: keyboard,
-                        cancellationToken: cancellationToken);
-                    return;
+                        await FinalizeSurvey(userId, message, cancellationToken);
+                    }
                 }
-            }
-            
-            switch (_userSteps[userId])
-            {
-                case 0:
-                    _userAnswers[userId].OnSubscribe = message.Text;
-                    break;
-                case 1:
-                    _userAnswers[userId].Address = message.Text;
-                    break;
-                case 2:
-                    _userAnswers[userId].TimeToPickup = message.Text;
-                    break;
-                case 3:
-                    _userAnswers[userId].PhoneNumber = message.Text;
-                    break;
-                case 4:
-                    _userAnswers[userId].TypeToPay = message.Text;
-                    break;
-            }
-            
-
-            var nextStep = _userSteps[userId] + 1;
-            if (nextStep < _questions.Count)
-            {
-                _userSteps[userId] = nextStep;
-                
-                    await _botClient.SendTextMessageAsync(message.Chat.Id, _questions[nextStep], cancellationToken: cancellationToken);
-                
-            }
-            else
-            {
-                await _botClient.SendTextMessageAsync(message.Chat.Id, "Додаткова інформація на гарячій лінії ...", cancellationToken: cancellationToken);
-                await _botClient.SendTextMessageAsync(message.Chat.Id, "Якщо у вас виникли питання, чи потрібна додаткова інформація напишіть нашому менеджеру:", cancellationToken: cancellationToken);
-                // await _botClient.SendTextMessageAsync(message.Chat.Id, "\nTODO: Checkout", cancellationToken: cancellationToken);
-                await SendSurveyResults(userId, message.From!, cancellationToken);
-                _userAnswers.TryRemove(userId, out _);
-                _userSteps.TryRemove(userId, out _);
             }
         }
+    }
+
+    private Task<bool> HandleSubscriptionStep(Message message, CancellationToken cancellationToken)
+    {
+        var userId = message.From!.Id;
+        _userAnswers[userId].OnSubscribe = message.Text!;
+        return Task.FromResult(true);
+    }
+
+    private Task<bool> HandleAddressStep(Message message, CancellationToken cancellationToken)
+    {
+        var userId = message.From!.Id;
+        _userAnswers[userId].Address = message.Text!;
+        return Task.FromResult(true);
+    }
+
+    private Task<bool> HandleTimeStep(Message message, CancellationToken cancellationToken)
+    {
+        var userId = message.From!.Id;
+        _userAnswers[userId].TimeToPickup = message.Text!;
+        return Task.FromResult(true);
+    }
+
+    private async Task<bool> HandlePhoneStep(Message message, CancellationToken cancellationToken)
+    {
+        var userId = message.From!.Id;
+        var phonePattern = @"^(?:\+?380\d{9}|0\d{9})$";
+
+        if (message.Text != null && Regex.IsMatch(message.Text.Replace(" ", ""), phonePattern))
+        {
+            _userAnswers[userId].PhoneNumber = message.Text.Replace(" ", "");
+            return true;
+        }
+
+        await _botClient.SendTextMessageAsync(
+            chatId: message.Chat.Id,
+            text: "❌ Номер телефону некоректний. Введіть номер в одному з форматів:\n\n✅ 093 000 00 00\n✅ 38 093 000 00 00\n✅ +38 093 000 00 00",
+            cancellationToken: cancellationToken);
+        return false;
+    }
+
+    private async Task<bool> HandlePaymentStep(Message message, CancellationToken cancellationToken)
+    {
+        var userId = message.From!.Id;
+        if (message.Text != null && (message.Text == "Готівкою на місці" || message.Text == "Картою на місці" || message.Text == "По предоплаті на карту"))
+        {
+            _userAnswers[userId].TypeToPay = message.Text;
+            return true;
+        }
+
+        var keyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "Готівкою на місці" },
+            new KeyboardButton[] { "Картою на місці"},
+            new KeyboardButton[] { "По предоплаті на карту" }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+
+        await _botClient.SendTextMessageAsync(
+            chatId: message.Chat.Id,
+            text: _questions[4],
+            replyMarkup: keyboard,
+            cancellationToken: cancellationToken);
+        return false;
+    }
+
+    private async Task FinalizeSurvey(long userId, Message message, CancellationToken cancellationToken)
+    {
+        await _botClient.SendTextMessageAsync(message.Chat.Id, "Додаткова інформація на гарячій лінії ...", cancellationToken: cancellationToken);
+        await _botClient.SendTextMessageAsync(message.Chat.Id, "Якщо у вас виникли питання, чи потрібна додаткова інформація напишіть нашому менеджеру:", cancellationToken: cancellationToken);
+        
+        await SendSurveyResults(userId, message.From!, cancellationToken);
+        
+        _userAnswers.TryRemove(userId, out _);
+        _userSteps.TryRemove(userId, out _);
     }
 
     private async Task SendSurveyResults(long userId, User user, CancellationToken cancellationToken)
