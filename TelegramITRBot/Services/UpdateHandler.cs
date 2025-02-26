@@ -45,11 +45,11 @@ public class UpdateHandler : IUpdateHandler
 
         _stepHandlers = new List<Func<Message, CancellationToken, Task<bool>>>
         {
-            HandleSubscriptionStep,
-            HandleAddressStep,
-            HandleTimeStep,
-            HandlePhoneStep,
-            HandlePaymentStep
+            HandleSubscriptionStep1,
+            HandleAddressStep2,
+            HandleTimeStep3,
+            HandlePhoneStep4,
+            HandlePaymentStep5
         };
     }
 
@@ -102,7 +102,14 @@ public class UpdateHandler : IUpdateHandler
                     _userSteps[userId]++;
                     if (_userSteps[userId] < _questions.Count)
                     {
-                        await _botClient.SendTextMessageAsync(message.Chat.Id, _questions[_userSteps[userId]], cancellationToken: cancellationToken);
+                        if (_userSteps[userId] == 4)
+                        {
+                            await ShowPaymentKeyboard(message.Chat.Id, cancellationToken);
+                        }
+                        else
+                        {
+                            await _botClient.SendTextMessageAsync(message.Chat.Id, _questions[_userSteps[userId]], cancellationToken: cancellationToken);
+                        }
                     }
                     else
                     {
@@ -113,28 +120,28 @@ public class UpdateHandler : IUpdateHandler
         }
     }
 
-    private Task<bool> HandleSubscriptionStep(Message message, CancellationToken cancellationToken)
+    private Task<bool> HandleSubscriptionStep1(Message message, CancellationToken cancellationToken)
     {
         var userId = message.From!.Id;
         _userAnswers[userId].OnSubscribe = message.Text!;
         return Task.FromResult(true);
     }
 
-    private Task<bool> HandleAddressStep(Message message, CancellationToken cancellationToken)
+    private Task<bool> HandleAddressStep2(Message message, CancellationToken cancellationToken)
     {
         var userId = message.From!.Id;
         _userAnswers[userId].Address = message.Text!;
         return Task.FromResult(true);
     }
 
-    private Task<bool> HandleTimeStep(Message message, CancellationToken cancellationToken)
+    private Task<bool> HandleTimeStep3(Message message, CancellationToken cancellationToken)
     {
         var userId = message.From!.Id;
         _userAnswers[userId].TimeToPickup = message.Text!;
         return Task.FromResult(true);
     }
 
-    private async Task<bool> HandlePhoneStep(Message message, CancellationToken cancellationToken)
+    private async Task<bool> HandlePhoneStep4(Message message, CancellationToken cancellationToken)
     {
         var userId = message.From!.Id;
         var phonePattern = @"^(?:\+?380\d{9}|0\d{9})$";
@@ -152,7 +159,7 @@ public class UpdateHandler : IUpdateHandler
         return false;
     }
 
-    private async Task<bool> HandlePaymentStep(Message message, CancellationToken cancellationToken)
+    private async Task<bool> HandlePaymentStep5(Message message, CancellationToken cancellationToken)
     {
         var userId = message.From!.Id;
         if (message.Text != null && (message.Text == "Готівкою на місці" || message.Text == "Картою на місці" || message.Text == "По предоплаті на карту"))
@@ -178,6 +185,27 @@ public class UpdateHandler : IUpdateHandler
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
         return false;
+    }
+    
+    
+    private async Task ShowPaymentKeyboard(long chatId, CancellationToken cancellationToken)
+    {
+        var keyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "Готівкою на місці" },
+            new KeyboardButton[] { "Картою на місці"},
+            new KeyboardButton[] { "По предоплаті на карту" }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+
+        await _botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: _questions[4],
+            replyMarkup: keyboard,
+            cancellationToken: cancellationToken);
     }
 
     private async Task FinalizeSurvey(long userId, Message message, CancellationToken cancellationToken)
